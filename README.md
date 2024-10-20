@@ -1,0 +1,2 @@
+# BegzarCore
+BegzarApp Core.
