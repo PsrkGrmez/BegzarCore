@@ -5,15 +5,21 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
+import com.google.gson.Gson;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.net.VpnService;
+import java.util.concurrent.CountDownLatch;
 import android.os.Build;
-
+import java.util.HashMap;
+import java.util.Map;
+import java.io.Serializable;
+import java.util.List;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.github.blueboytm.flutter_v2ray.v2ray.V2rayController;
 import com.github.blueboytm.flutter_v2ray.v2ray.V2rayReceiver;
@@ -118,6 +124,59 @@ public class FlutterV2rayPlugin implements FlutterPlugin, ActivityAware, PluginR
                             result.success(-1);
                         }
                     });
+                    break;
+
+                case "getAllServerDelay":
+                    String res = call.argument("configs");
+                    List<String> configs = new Gson().fromJson(res, List.class);
+
+                    ConcurrentHashMap<String, Long> realPings = new ConcurrentHashMap<>();
+
+                    CountDownLatch latch = new CountDownLatch(configs.size());
+
+                    for (String config : configs) {
+                        new Thread(new Runnable() {
+                            @Override
+                            public void run() {
+                                try {
+                                    // Simulate the ping operation
+                                    Long result = V2rayController.getV2rayServerDelay(config, "");
+                                    Map<String, Long> myMap = new HashMap<>();
+                                    myMap.put(config, result);
+//                                    android.util.Log.d("Plugin", "test ping: " + myMap);
+
+                                    if (result != null) {
+                                        realPings.put(config, result);
+                                    }
+                                } finally {
+                                    // Decrement the latch count when the thread finishes
+                                    latch.countDown();
+                                }
+                            }
+                        }).start();
+                    }
+
+                    new Thread(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                // Wait for all threads to finish
+                                latch.await();
+
+                                // Run on UI thread to return the result
+                                activity.runOnUiThread(new Runnable() {
+                                    @Override
+                                    public void run() {
+//                                        android.util.Log.d("Plugin", "Final pings: " + realPings);
+                                        result.success(new Gson().toJson(realPings));
+                                    }
+                                });
+                            } catch (InterruptedException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    }).start();
+
                     break;
                 case "getCoreVersion":
                     result.success(V2rayController.getCoreVersion());
